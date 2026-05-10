@@ -1,0 +1,213 @@
+# CryptoFlow — docker-compose.yml
+# Single command: docker compose up --build -d
+
+x-airflow-common: &airflow-common
+  build:
+    context: .
+    dockerfile: docker/airflow/Dockerfile
+  environment: &airflow-env
+    AIRFLOW__CORE__EXECUTOR: LocalExecutor
+    AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres/${POSTGRES_DB}
+    AIRFLOW__CORE__FERNET_KEY: ${AIRFLOW_FERNET_KEY}
+    AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION: "false"
+    AIRFLOW__CORE__LOAD_EXAMPLES: "false"
+    AIRFLOW__API__AUTH_BACKENDS: airflow.api.auth.backend.basic_auth
+    AIRFLOW__WEBSERVER__SECRET_KEY: ${AIRFLOW_WEBSERVER_SECRET_KEY}
+    AIRFLOW__SCHEDULER__ENABLE_HEALTH_CHECK: "true"
+    # Pipeline environment variables (available inside DAG tasks)
+    CRYPTO_DB: ${CRYPTO_DB}
+    POSTGRES_USER: ${POSTGRES_USER}
+    POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    POSTGRES_HOST: postgres
+    ELASTIC_HOST: http://elasticsearch:9200
+    ELASTIC_PASSWORD: ${ELASTIC_PASSWORD}
+    ELASTIC_INDEX: cryptoflow-market-data
+    BINANCE_SYMBOLS: BTCUSDT,ETHUSDT,SOLUSDT
+    BINANCE_INTERVAL: 1m
+    BINANCE_LIMIT: "200"
+  volumes: &airflow-volumes
+    - ./dags:/opt/airflow/dags
+    - ./logs:/opt/airflow/logs
+    - ./plugins:/opt/airflow/plugins
+  user: "${AIRFLOW_UID:-50000}:0"
+  depends_on:
+    postgres:
+      condition: service_healthy
+  networks:
+    - cryptoflow_net
+
+services:
+
+  # ─── PostgreSQL ─────────────────────────────────────────────────────────────
+  postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    volumes:
+      - postgres-db-volume:/var/lib/postgresql/data
+      - ./sql/init.sql:/docker-entrypoint-initdb.d/01_init.sql
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "${POSTGRES_USER}", "-d", "${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+    restart: always
+    ports:
+      - "5432:5432"
+    networks:
+      - cryptoflow_net
+
+  # ─── pgAdmin ────────────────────────────────────────────────────────────────
+  pgadmin:
+    image: dpage/pgadmin4:8
+    environment:
+      PGADMIN_DEFAULT_EMAIL: ${PGADMIN_EMAIL}
+      PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_PASSWORD}
+      PGADMIN_SERVER_JSON_FILE: /pgadmin4/servers.json
+      PGADMIN_CONFIG_MASTER_PASSWORD_REQUIRED: "False"
+    ports:
+      - "5050:80"
+    volumes:
+      - pgadmin-volume:/var/lib/pgadmin
+      - ./docker/pgadmin/servers.json:/pgadmin4/servers.json:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - cryptoflow_net
+    restart: unless-stopped
+
+
+
+  # ─── Elasticsearch ──────────────────────────────────────────────────────────
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.12.2
+    environment:
+      - node.name=elasticsearch
+      - discovery.type=single-node
+      - bootstrap.memory_lock=true
+      - xpack.security.enabled=false
+      - xpack.security.http.ssl.enabled=false
+      - "ES_JAVA_OPTS=-Xms512m -Xmx512m"
+    mem_limit: 1g
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+    volumes:
+      - es-data-volume:/usr/share/elasticsearch/data
+    ports:
+      - "9200:9200"
+    networks:
+      - cryptoflow_net
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:9200/_cluster/health | grep -qE '\"status\":\"(green|yellow)\"'"]
+      interval: 15s
+      timeout: 10s
+      retries: 12
+      start_period: 40s
+    restart: unless-stopped
+
+  # ─── Kibana ─────────────────────────────────────────────────────────────────
+  kibana:
+    image: docker.elastic.co/kibana/kibana:8.12.2
+    environment:
+      - ELASTICSEARCH_HOSTS=http://elasticsearch:9200
+      - xpack.security.enabled=false
+    ports:
+      - "5601:5601"
+    networks:
+      - cryptoflow_net
+    depends_on:
+      elasticsearch:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # ─── Airflow Init (runs once) ────────────────────────────────────────────────
+  airflow-init:
+    <<: *airflow-common
+    entrypoint: /bin/bash
+    command:
+      - -c
+      - |
+        airflow db upgrade
+        airflow users create \
+          --username "${AIRFLOW_ADMIN_USER}" \
+          --password "${AIRFLOW_ADMIN_PASSWORD}" \
+          --firstname Admin \
+          --lastname User \
+          --role Admin \
+          --email admin@cryptoflow.local || true
+        echo "=== Airflow init complete ==="
+    environment:
+      <<: *airflow-env
+      AIRFLOW_ADMIN_USER: ${AIRFLOW_ADMIN_USER}
+      AIRFLOW_ADMIN_PASSWORD: ${AIRFLOW_ADMIN_PASSWORD}
+    restart: "no"
+
+  # ─── Airflow Webserver ───────────────────────────────────────────────────────
+  airflow-webserver:
+    <<: *airflow-common
+    command: webserver
+    ports:
+      - "8080:8080"
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+    restart: always
+    depends_on:
+      postgres:
+        condition: service_healthy
+      airflow-init:
+        condition: service_completed_successfully
+
+  # ─── Airflow Scheduler ──────────────────────────────────────────────────────
+  airflow-scheduler:
+    <<: *airflow-common
+    command: scheduler
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "http://localhost:8974/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+    restart: always
+    depends_on:
+      postgres:
+        condition: service_healthy
+      airflow-init:
+        condition: service_completed_successfully
+
+  # ─── FastAPI ────────────────────────────────────────────────────────────────
+  fastapi:
+    build:
+      context: .
+      dockerfile: docker/fastapi/Dockerfile
+    ports:
+      - "8000:8000"
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${CRYPTO_DB}
+      ES_HOST: http://elasticsearch:9200
+    depends_on:
+      postgres:
+        condition: service_healthy
+      elasticsearch:
+        condition: service_healthy
+    networks:
+      - cryptoflow_net
+    restart: unless-stopped
+
+volumes:
+  postgres-db-volume:
+  pgadmin-volume:
+  es-data-volume:
+
+networks:
+  cryptoflow_net:
+    driver: bridge

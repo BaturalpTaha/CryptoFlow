@@ -1,0 +1,3 @@
+# Airflow task logs are written here at runtime.
+# This directory is mounted into the airflow-webserver and airflow-scheduler containers.
+# Do not commit actual log files – they are listed in .gitignore.

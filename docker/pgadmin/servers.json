@@ -1,0 +1,20 @@
+{
+  "Servers": {
+    "1": {
+      "Name": "CryptoFlow DB",
+      "Group": "Servers",
+      "Host": "postgres",
+      "Port": 5432,
+      "MaintenanceDB": "cryptoflow",
+      "Username": "cryptoflow",
+      "Password": "cryptoflow_pass",
+      "SSLMode": "prefer",
+      "SSLCompression": 0,
+      "Timeout": 10,
+      "UseSSHTunnel": 0,
+      "TunnelPort": "22",
+      "TunnelAuthentication": 0,
+      "KerberosAuthentication": false
+    }
+  }
+}
