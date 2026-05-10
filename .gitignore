@@ -1,0 +1,74 @@
+# ─── Python ──────────────────────────────────────────────────────────────────
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.egg-info/
+dist/
+build/
+venv/
+.venv/
+
+# ─── Environment / Secrets ───────────────────────────────────────────────────
+.env
+.env.local
+.env.production
+.env.*.local
+*.secret
+
+# ─── Airflow Logs ─────────────────────────────────────────────────────────────
+logs/dag_id=*
+logs/dag_processor_manager/
+logs/scheduler/
+!logs/.gitkeep
+
+# ─── Data ─────────────────────────────────────────────────────────────────────
+data/*.csv
+data/*.parquet
+data/*.json
+!data/sample_*.json
+
+# ─── Sample / Generated Data ─────────────────────────────────────────────────
+# sample_market_data.csv is kept intentionally as demo dataset
+
+# ─── LaTeX Auxiliary Files ────────────────────────────────────────────────────
+docs/*.aux
+docs/*.log
+docs/*.out
+docs/*.toc
+docs/*.nav
+docs/*.snm
+docs/*.synctex.gz
+docs/*.fdb_latexmk
+docs/*.fls
+docs/*.bbl
+docs/*.blg
+docs/*.vrb
+
+# ─── Compiled PDFs (generated, not source) ────────────────────────────────────
+# Keep the report PDF if you want it in repo, otherwise uncomment:
+# docs/*.pdf
+
+# ─── IDEs ─────────────────────────────────────────────────────────────────────
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+
+# ─── Docker ───────────────────────────────────────────────────────────────────
+*.pid
+
+# ─── Kibana Export (large) ────────────────────────────────────────────────────
+# export.ndjson is kept intentionally for Kibana dashboard import
+
+# ─── OS Generated ────────────────────────────────────────────────────────────
+desktop.ini
+*.lnk
+
+# ─── Archives ─────────────────────────────────────────────────────────────────
+*.zip
+*.tar.gz
+*.rar

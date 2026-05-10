@@ -1,0 +1,23 @@
+{
+  "mappings": {
+    "properties": {
+      "symbol":         { "type": "keyword" },
+      "timestamp":      { "type": "date", "format": "yyyy-MM-dd HH:mm:ss" },
+      "open":           { "type": "float" },
+      "high":           { "type": "float" },
+      "low":            { "type": "float" },
+      "close":          { "type": "float" },
+      "volume":         { "type": "float" },
+      "sma_20":         { "type": "float" },
+      "rsi_14":         { "type": "float" },
+      "bb_high":        { "type": "float" },
+      "bb_low":         { "type": "float" },
+      "is_anomaly":     { "type": "boolean" },
+      "anomaly_reason": { "type": "text", "fields": { "keyword": { "type": "keyword" } } }
+    }
+  },
+  "settings": {
+    "number_of_shards":   1,
+    "number_of_replicas": 0
+  }
+}
